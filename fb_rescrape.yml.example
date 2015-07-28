@@ -1,0 +1,3 @@
+# make a copy of this file with valid login and rename as `fb_rescrape.yml`
+fb_user: user@example.com
+fb_pass: secret

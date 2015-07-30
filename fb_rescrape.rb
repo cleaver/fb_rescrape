@@ -21,7 +21,7 @@ class FbRescrape
     @fb_login = YAML.load_file('fb_rescrape.yml')
     @login_url = 'https://www.facebook.com/'
     @base_url = 'https://developers.facebook.com/tools/debug/og/object/'
-    @driver.manage.timeouts.implicit_wait = 30
+    @driver.manage.timeouts.implicit_wait = 5
   end
 
   def run
@@ -41,11 +41,13 @@ class FbRescrape
     password_field.send_keys @fb_login['fb_pass']
     @driver.find_element(:name, 'login').click
     wait = Selenium::WebDriver::Wait.new(:timeout => 10)
-    wait.until {@driver.find_element(:id, 'q')}
+    wait.until do
+      @driver.find_element(:id, 'q')
+    end
   end
 
   def process(url)
-    if show_existing(url) != '200'
+    if show_existing(url) == :rescrape
       rescrape url
     end
   end
@@ -59,9 +61,14 @@ class FbRescrape
     query.send_keys url
     show_button = @driver.find_element(:xpath, '//button[1]')
     show_button.click
-    response = @driver.find_element(:xpath, '//table//tr[2]//td[2]//span').text
-    puts "The response code is: #{response}."
-    return response
+    begin
+      wait = Selenium::WebDriver::Wait.new(:timeout => 15)
+      response = wait.until { show_response }
+      puts 'The response code is: ' + response.to_s
+    rescue
+      response = :rescrape
+    end
+    response
   end
 
   def rescrape(url)
@@ -72,9 +79,36 @@ class FbRescrape
     query.send_keys url
     fetch_button = @driver.find_element(:name, 'rescrape')
     fetch_button.click
-    response = @driver.find_element(:xpath, '//table//tr[2]//td[2]//span').text
-    puts "The response code is: #{response}."
-    return response
+    begin
+      wait = Selenium::WebDriver::Wait.new(:timeout => 20)
+      response = wait.until { show_response }
+      puts 'The response code is: ' + response.to_s
+    rescue
+      puts 'Timeout'
+      response = :rescrape
+    end
+    response
+  end
+
+  def show_response
+    response = false
+    # look for response code
+    begin
+      code_label = @driver.find_element(:xpath, '//table//tr[2]//td[1]//span').text
+      if code_label === 'Response Code'
+        code = @driver.find_element(:xpath, '//table//tr[2]//td[2]//span').text
+        puts " Found code: #{code}"
+        response = code == '200' ? :good : :rescrape
+      end
+    rescue
+      # look for Error parsing input URL - it may have never been shared and scraped.
+      error_message = @driver.find_element(:xpath, "//div[@id='u_0_1']//span").text
+      puts " Found error: #{error_message}"
+      if error_message=~ /Error parsing input URL/
+        response = :rescrape
+      end
+    end
+    response
   end
 
   def load_query_form
